@@ -104,8 +104,8 @@ def make_color_group(data):
 # data import and preparation phase
 # TODO: what is good ratio for images? 100x100?
 # TODO: Reduce the quantization level e.g. to 8 levels (wtf)
-x = 50
-y = 50
+x = 100
+y = 100
 honeycomb_resized = resize_images(create_image_array('honeycomb.txt'), x, y)
 birdnest_resized = resize_images(create_image_array('birdnests.txt'), x, y)
 lighthouse_resized = resize_images(create_image_array('lighthouse.txt'), x, y)
@@ -134,7 +134,7 @@ data = pd.concat([h_df, b_df, l_df])
 data = data.reset_index(drop=True)
 data_X = data.loc[:, data.columns != 'label']
 data_X = data_X.reset_index(drop=True)
-data_X = stats.zscore(data_X, axis=1, ddof=1)
+data_X = stats.zscore(data_X, axis=1, ddof=0)
 data_Y = data['label']
 data_Y = data_Y.reset_index(drop=True)
 pca = PCA(n_components=2)
