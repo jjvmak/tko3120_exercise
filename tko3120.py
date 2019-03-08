@@ -11,6 +11,8 @@ from skimage.transform import resize, rescale, rotate, setup, warp
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import pandas as pd
+from scipy import stats
+from sklearn.neighbors import KNeighborsClassifier
 
 
 def create_image_array(location):
@@ -20,10 +22,13 @@ def create_image_array(location):
     print('reading urls from ' + location)
     print(repr(len(urls)) + ' urls found')
     # for dev decrease the range! TODO: change back to len(array)
-    for i in range(5):
-        print('reading image ' + repr(i) + ' from ' + urls[i])
-        image = io.imread(urls[i])
-        images.append(image)
+    for i in range(len(urls)):
+        # print('reading image ' + repr(i) + ' from ' + urls[i])
+        try:
+           image = io.imread(urls[i])
+           images.append(image)
+        except:
+            print("An exception occurred")
     return images
 
 
@@ -78,17 +83,29 @@ def extract_rgb_features(image_array):
     return features
 
 
+
 def make_X_and_y_df(data, label):
     df = pd.DataFrame(data)
     df['label'] = label
     return df
 
 
+def make_color_group(data):
+    group = []
+    for i in range(len(data)):
+        if data[i] == 'honey':
+            group.append(1)
+        if data[i] == 'light':
+            group.append(2)
+        if data[i] == 'bird':
+            group.append(3)
+    return group
+
 # data import and preparation phase
 # TODO: what is good ratio for images? 100x100?
 # TODO: Reduce the quantization level e.g. to 8 levels (wtf)
-x = 20
-y = 20
+x = 50
+y = 50
 honeycomb_resized = resize_images(create_image_array('honeycomb.txt'), x, y)
 birdnest_resized = resize_images(create_image_array('birdnests.txt'), x, y)
 lighthouse_resized = resize_images(create_image_array('lighthouse.txt'), x, y)
@@ -114,29 +131,30 @@ b_df = make_X_and_y_df(bird_X, 'bird')
 l_df = make_X_and_y_df(light_X, 'light')
 
 data = pd.concat([h_df, b_df, l_df])
+data = data.reset_index(drop=True)
 data_X = data.loc[:, data.columns != 'label']
+data_X = data_X.reset_index(drop=True)
+data_X = stats.zscore(data_X, axis=1, ddof=1)
 data_Y = data['label']
+data_Y = data_Y.reset_index(drop=True)
 pca = PCA(n_components=2)
 pca.fit(data_X)
-xf_pca = pca.transform(data_X)
+pca_X = pca.transform(data_X)
+pca_X_df = pd.DataFrame(pca_X)
+group = make_color_group(data_Y)
+plt.scatter(pca_X[:,0], pca_X[:,1], c=group)
+plt.show
 
-asd = pd.DataFrame(xf_pca)
 
-finalDf = pd.concat([asd, data_Y], axis=1)
+train_X = np.delete(pca_X, 0, axis=0)
+train_Y = data_Y.drop(data_Y.index[0])
+train_Y = train_Y.reset_index(drop=True)
 
-fig = plt.figure(figsize = (8,8))
-ax = fig.add_subplot(1,1,1)
-ax.set_xlabel('Principal Component 1', fontsize = 15)
-ax.set_ylabel('Principal Component 2', fontsize = 15)
-ax.set_title('2 component PCA', fontsize = 20)
-targets = ['honey', 'light', 'bird']
-colors = ['r', 'g', 'b']
-for target, color in zip(targets,colors):
-    indicesToKeep = finalDf['label'] == target
-    ax.scatter(finalDf.loc[indicesToKeep, 'principal component 1']
-               , finalDf.loc[indicesToKeep, 'principal component 2']
-               , c = color
-               , s = 50)
-ax.legend(targets)
-ax.grid()
+neigh = KNeighborsClassifier(n_neighbors=3)
+neigh.fit(train_X, train_Y)
+result = neigh.predict([pca_X[0]])
+print(result[0])
+
+
+
 
