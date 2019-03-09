@@ -148,7 +148,7 @@ def pca_knn_and_cv(data):
         train_x = np.delete(pca_x, i, axis=0)
         train_y = data_y.drop(data_y.index[i])
         train_y = train_y.reset_index(drop=True)
-        neigh = KNeighborsClassifier(n_neighbors=3)
+        neigh = KNeighborsClassifier(n_neighbors=7)
         neigh.fit(train_x, train_y)
         result = neigh.predict([pca_x[i]])
         predictions.append(result[0])
@@ -198,7 +198,6 @@ def extract_glcm_features_for_image(image, other_image):
 
 
 def extract_glcm_features_for_set(set):
-    # TODO: maybe don't calculate the means?
     features = []
     for i in range(len(set)):
         contrast, dissimilarity, homogeneity, correlation, asm = \
@@ -244,15 +243,14 @@ def extract_glcm_features_for_set(set):
 
 
 # data import and preparation phase
-# TODO: what is good ratio for images? 100x100?
-# TODO: Reduce the quantization level e.g. to 8 levels (wtf)
+
 x = 8
 y = 8
 honeycomb_resized, honeycomb_resized_gray = resize_images(create_image_array('honeycomb.txt'), x, y)
 birdnest_resized, birdnest_resized_gray = resize_images(create_image_array('birdnests.txt'), x, y)
 lighthouse_resized, lighthouse_resized_gray = resize_images(create_image_array('lighthouse.txt'), x, y)
 
-# feature extraction and KNN and CV for RGB features
+# feature extraction
 
 honey_X = extract_rgb_features(honeycomb_resized)
 bird_X = extract_rgb_features(birdnest_resized)
@@ -269,19 +267,16 @@ data = data.reset_index(drop=True)
 
 # glcm
 # TODO: compare each picture to each other???
-# TODO: don't calculate means in feature extraction???
-
 honey_X_g = extract_glcm_features_for_set(honeycomb_resized_gray)
 bird_X_g = extract_glcm_features_for_set(birdnest_resized_gray)
 light_X_g = extract_glcm_features_for_set(lighthouse_resized_gray)
 
-h_df_g = make_X_and_y_df(honey_X_g, 'honey')
-b_df_g = make_X_and_y_df(bird_X_g, 'bird')
-l_df_g = make_X_and_y_df(light_X_g, 'light')
+h_df_g = pd.DataFrame(honey_X_g)
+b_df_g = pd.DataFrame(bird_X_g)
+l_df_g = pd.DataFrame(light_X_g)
 
 data_g = pd.concat([h_df_g, b_df_g, l_df_g])
 data_g = data_g.reset_index(drop=True)
+all_data = pd.concat([data_g, data], axis=1)
 
-pca_knn_and_cv(data_g)
-
-# TODO: combine RGB and GLCM features
+pca_knn_and_cv(all_data)
