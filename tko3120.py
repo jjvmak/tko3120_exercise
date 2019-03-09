@@ -13,6 +13,10 @@ from sklearn.decomposition import PCA
 import pandas as pd
 from scipy import stats
 from sklearn.neighbors import KNeighborsClassifier
+from skimage.color import rgb2gray
+from skimage import img_as_ubyte as eight_bit
+from skimage.feature import greycomatrix, greycoprops
+import statistics
 
 
 def create_image_array(location):
@@ -21,12 +25,13 @@ def create_image_array(location):
     urls = np.loadtxt(location, dtype='U100')
     print('reading urls from ' + location)
     print(repr(len(urls)) + ' urls found')
+    print()
     # for dev decrease the range! TODO: change back to len(array)
     for i in range(len(urls)):
         # print('reading image ' + repr(i) + ' from ' + urls[i])
         try:
-           image = io.imread(urls[i])
-           images.append(image)
+            image = io.imread(urls[i])
+            images.append(image)
         except:
             print("An exception occurred")
     return images
@@ -35,12 +40,14 @@ def create_image_array(location):
 def resize_images(image_array, x, y):
     """Returns array of resized images."""
     resized_images = []
+    resized_gray_images = []
     for i in range(len(image_array)):
         img = image_array[i]
         # TODO: what are right configs?
         resized = resize(img, (x, y), anti_aliasing='reflect', mode='reflect')
         resized_images.append(resized)
-    return resized_images
+        resized_gray_images.append(rgb2gray(resized))
+    return resized_images, resized_gray_images
 
 
 def first_order_texture_measures(img, show_plts):
@@ -83,7 +90,6 @@ def extract_rgb_features(image_array):
     return features
 
 
-
 def make_X_and_y_df(data, label):
     df = pd.DataFrame(data)
     df['label'] = label
@@ -101,27 +107,129 @@ def make_color_group(data):
             group.append(3)
     return group
 
+
+def c_index(true_labels, predicted_labels):
+    n = 0
+    h_sum = 0
+    for i in range(len(true_labels)):
+        t = true_labels[i]
+        p = predicted_labels[i]
+        j = i + 1
+        for j in range(j, len(true_labels)):
+            nt = true_labels[j]
+            np = predicted_labels[j]
+            if t != nt:
+                n = n + 1
+                if (p < np and t < nt) or (p > np and t > nt):
+                    h_sum = h_sum + 1
+                elif p == np:
+                    h_sum = h_sum + 0.5
+    return h_sum / n
+
+
+def pca_knn_and_cv(data):
+    # TODO: different k values
+    data_x = data.loc[:, data.columns != 'label']
+    data_x = data_x.reset_index(drop=True)
+    data_x = stats.zscore(data_x, axis=1, ddof=0)
+    data_y = data['label']
+    data_y = data_y.reset_index(drop=True)
+    pca = PCA(n_components=2)
+    pca.fit(data_x)
+    pca_x = pca.transform(data_x)
+    group = make_color_group(data_y)
+
+    plt.scatter(pca_x[:, 0], pca_x[:, 1], c=group)
+    plt.show
+
+    predictions = []
+    true_labels = []
+    for i in range(len(pca_x)):
+        train_x = np.delete(pca_x, i, axis=0)
+        train_y = data_y.drop(data_y.index[i])
+        train_y = train_y.reset_index(drop=True)
+        neigh = KNeighborsClassifier(n_neighbors=3)
+        neigh.fit(train_x, train_y)
+        result = neigh.predict([pca_x[i]])
+        predictions.append(result[0])
+        true_labels.append(data_y[i])
+
+    print('c_index: ' + repr(c_index(true_labels, predictions)))
+    n = 0
+    for j in range(len(predictions)):
+        if predictions[j] == true_labels[j]:
+            n = n + 1
+    print('prediction rate: ' + repr(n) + '/' + repr(len(predictions)))
+
+
+def extract_glcm_features_for_image(image, other_image):
+    # http://scikit-image.org/docs/0.9.x/auto_examples/plot_glcm.html
+    # I used that tutorial with few modifications
+    image = eight_bit(image)
+    other_image = eight_bit(other_image)
+
+    PATCH_SIZE = 4
+
+    locations = [(0, 0), (0, 4), (4, 0), (4, 4)]
+    patches = []
+
+    other_patches = []
+
+    for loc in locations:
+        patches.append(image[loc[0]:loc[0] + PATCH_SIZE,
+                       loc[1]:loc[1] + PATCH_SIZE])
+        other_patches.append(other_image[loc[0]:loc[0] + PATCH_SIZE,
+                             loc[1]:loc[1] + PATCH_SIZE])
+
+    contrast = []
+    dissimilarity = []
+    homogeneity = []
+    correlation = []
+    asm = []
+    for i, patch in enumerate(patches + other_patches):
+        glcm = greycomatrix(patch, [1], [90], 256, symmetric=True, normed=True)
+        contrast.append(greycoprops(glcm, 'contrast')[0, 0])
+        dissimilarity.append(greycoprops(glcm, 'dissimilarity')[0, 0])
+        homogeneity.append(greycoprops(glcm, 'homogeneity')[0, 0])
+        correlation.append(greycoprops(glcm, 'correlation')[0, 0])
+        asm.append(greycoprops(glcm, 'ASM')[0, 0])
+
+    return contrast, dissimilarity, homogeneity, correlation, asm
+
+
+def extract_glcm_features_for_set(set):
+    # TODO: maybe don't calculate the means?
+    features = []
+    for i in range(len(set)):
+        contrast, dissimilarity, homogeneity, correlation, asm = \
+            extract_glcm_features_for_image(set[i], set[i])
+        c_mean = statistics.mean(contrast)
+        d_mean = statistics.mean(dissimilarity)
+        h_mean = statistics.mean(homogeneity)
+        cor_mean = statistics.mean(correlation)
+        a_mean = statistics.mean(asm)
+        features_for_row = np.array([c_mean, d_mean, h_mean, cor_mean, a_mean, h_mean])
+        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+
+        if len(features) == 0:
+            features = features_for_row
+        else:
+            features = np.concatenate((features, features_for_row), axis=0)
+
+    return features
+
+
 # data import and preparation phase
 # TODO: what is good ratio for images? 100x100?
 # TODO: Reduce the quantization level e.g. to 8 levels (wtf)
-x = 100
-y = 100
-honeycomb_resized = resize_images(create_image_array('honeycomb.txt'), x, y)
-birdnest_resized = resize_images(create_image_array('birdnests.txt'), x, y)
-lighthouse_resized = resize_images(create_image_array('lighthouse.txt'), x, y)
+x = 8
+y = 8
+honeycomb_resized, honeycomb_resized_gray = resize_images(create_image_array('honeycomb.txt'), x, y)
+birdnest_resized, birdnest_resized_gray = resize_images(create_image_array('birdnests.txt'), x, y)
+lighthouse_resized, lighthouse_resized_gray = resize_images(create_image_array('lighthouse.txt'), x, y)
 
-# TODO: gray scale images
+# feature extraction and KNN and CV for RGB features
 
-# io.imshow(lighthouse_resized[0])
-# io.show()
-# io.imshow(birdnest_resized[0])
-# io.show()
-# io.imshow(honeycomb_resized[0])
-# io.show()
-
-
-# feature extraction
-# TODO: maybe do this in function
 honey_X = extract_rgb_features(honeycomb_resized)
 bird_X = extract_rgb_features(birdnest_resized)
 light_X = extract_rgb_features(lighthouse_resized)
@@ -132,29 +240,24 @@ l_df = make_X_and_y_df(light_X, 'light')
 
 data = pd.concat([h_df, b_df, l_df])
 data = data.reset_index(drop=True)
-data_X = data.loc[:, data.columns != 'label']
-data_X = data_X.reset_index(drop=True)
-data_X = stats.zscore(data_X, axis=1, ddof=0)
-data_Y = data['label']
-data_Y = data_Y.reset_index(drop=True)
-pca = PCA(n_components=2)
-pca.fit(data_X)
-pca_X = pca.transform(data_X)
-pca_X_df = pd.DataFrame(pca_X)
-group = make_color_group(data_Y)
-plt.scatter(pca_X[:,0], pca_X[:,1], c=group)
-plt.show
 
+# pca_knn_and_cv(data)
 
-train_X = np.delete(pca_X, 0, axis=0)
-train_Y = data_Y.drop(data_Y.index[0])
-train_Y = train_Y.reset_index(drop=True)
+# glcm
+# TODO: compare each picture to each other???
+# TODO: don't calculate means in feature extraction???
 
-neigh = KNeighborsClassifier(n_neighbors=3)
-neigh.fit(train_X, train_Y)
-result = neigh.predict([pca_X[0]])
-print(result[0])
+honey_X_g = extract_glcm_features_for_set(honeycomb_resized_gray)
+bird_X_g = extract_glcm_features_for_set(birdnest_resized_gray)
+light_X_g = extract_glcm_features_for_set(lighthouse_resized_gray)
 
+h_df_g = make_X_and_y_df(honey_X_g, 'honey')
+b_df_g = make_X_and_y_df(bird_X_g, 'bird')
+l_df_g = make_X_and_y_df(light_X_g, 'light')
 
+data_g = pd.concat([h_df_g, b_df_g, l_df_g])
+data_g = data_g.reset_index(drop=True)
 
+pca_knn_and_cv(data_g)
 
+# TODO: combine RGB and GLCM features
