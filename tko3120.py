@@ -203,13 +203,37 @@ def extract_glcm_features_for_set(set):
     for i in range(len(set)):
         contrast, dissimilarity, homogeneity, correlation, asm = \
             extract_glcm_features_for_image(set[i], set[i])
-        c_mean = statistics.mean(contrast)
-        d_mean = statistics.mean(dissimilarity)
-        h_mean = statistics.mean(homogeneity)
-        cor_mean = statistics.mean(correlation)
-        a_mean = statistics.mean(asm)
-        features_for_row = np.array([c_mean, d_mean, h_mean, cor_mean, a_mean, h_mean])
+        features_for_row = np.array([])
+
+        # TODO: must be better way to do this
+
+        for con in range(len(contrast)):
+            features_for_row = np.append(features_for_row, contrast[con])
+
         features_for_row = features_for_row.reshape(-1, len(features_for_row))
+
+        for dis in range(len(dissimilarity)):
+            features_for_row = np.append(features_for_row, dissimilarity[dis])
+
+        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+
+        for hom in range(len(homogeneity)):
+            features_for_row = np.append(features_for_row, homogeneity[hom])
+
+        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+
+        for cor in range(len(correlation)):
+            features_for_row = np.append(features_for_row, correlation[cor])
+
+        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+
+        for a in range(len(asm)):
+            features_for_row = np.append(features_for_row, asm[a])
+
+        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+
+        # features_for_row = np.array([contrast, dissimilarity, homogeneity, correlation, asm])
+        # features_for_row = features_for_row.reshape(-1, len(features_for_row))
 
         if len(features) == 0:
             features = features_for_row
