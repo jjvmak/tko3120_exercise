@@ -18,6 +18,15 @@ from skimage import img_as_ubyte as eight_bit
 from skimage.feature import greycomatrix, greycoprops
 import statistics
 
+def load_ref_image():
+    try:
+        image = io.imread(
+                'https://images.freeimages.com/images/large-previews/e71/frog-1371919.jpg')
+        image_rez, gray_rez = resize_images([image], 300, 300)
+
+    except:
+        print("An exception occurred")
+    return gray_rez[0]
 
 def create_image_array(location):
     """Returns array of images of given locations."""
@@ -134,6 +143,7 @@ def pca_knn_and_cv(data):
     data_x = stats.zscore(data_x, axis=1, ddof=0)
     data_y = data['label']
     data_y = data_y.reset_index(drop=True)
+
     pca = PCA(n_components=2)
     pca.fit(data_x)
     pca_x = pca.transform(data_x)
@@ -145,12 +155,12 @@ def pca_knn_and_cv(data):
     predictions = []
     true_labels = []
     for i in range(len(pca_x)):
-        train_x = np.delete(pca_x, i, axis=0)
+        train_x = np.delete(data_x, i, axis=0)
         train_y = data_y.drop(data_y.index[i])
         train_y = train_y.reset_index(drop=True)
-        neigh = KNeighborsClassifier(n_neighbors=7)
+        neigh = KNeighborsClassifier(n_neighbors=3)
         neigh.fit(train_x, train_y)
-        result = neigh.predict([pca_x[i]])
+        result = neigh.predict([data_x[i]])
         predictions.append(result[0])
         true_labels.append(data_y[i])
 
@@ -168,9 +178,9 @@ def extract_glcm_features_for_image(image, other_image):
     image = eight_bit(image)
     other_image = eight_bit(other_image)
 
-    PATCH_SIZE = 4
+    PATCH_SIZE = 150
 
-    locations = [(0, 0), (0, 4), (4, 0), (4, 4)]
+    locations = [(0, 0), (0, 150), (150, 0), (150, 150)]
     patches = []
 
     other_patches = []
@@ -197,42 +207,50 @@ def extract_glcm_features_for_image(image, other_image):
     return contrast, dissimilarity, homogeneity, correlation, asm
 
 
-def extract_glcm_features_for_set(set):
+def extract_glcm_features_for_set(set, use_means):
     features = []
     for i in range(len(set)):
         contrast, dissimilarity, homogeneity, correlation, asm = \
-            extract_glcm_features_for_image(set[i], set[i])
+            extract_glcm_features_for_image(set[i], ref_img)
         features_for_row = np.array([])
 
         # TODO: must be better way to do this
 
-        for con in range(len(contrast)):
-            features_for_row = np.append(features_for_row, contrast[con])
+        if use_means:
 
-        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+            features_for_row = np.append(features_for_row ,statistics.mean(contrast))
+            features_for_row = np.append(features_for_row ,statistics.mean(dissimilarity))
+            features_for_row = np.append(features_for_row ,statistics.mean(homogeneity))
+            features_for_row = np.append(features_for_row ,statistics.mean(correlation))
+            features_for_row = np.append(features_for_row ,statistics.mean(asm))
 
-        for dis in range(len(dissimilarity)):
-            features_for_row = np.append(features_for_row, dissimilarity[dis])
+            features_for_row = features_for_row.reshape(-1, len(features_for_row))
 
-        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+        else:
+            for con in range(len(contrast)):
+                features_for_row = np.append(features_for_row, contrast[con])
 
-        for hom in range(len(homogeneity)):
-            features_for_row = np.append(features_for_row, homogeneity[hom])
+            features_for_row = features_for_row.reshape(-1, len(features_for_row))
 
-        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+            for dis in range(len(dissimilarity)):
+                features_for_row = np.append(features_for_row, dissimilarity[dis])
 
-        for cor in range(len(correlation)):
-            features_for_row = np.append(features_for_row, correlation[cor])
+            features_for_row = features_for_row.reshape(-1, len(features_for_row))
 
-        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+            for hom in range(len(homogeneity)):
+                features_for_row = np.append(features_for_row, homogeneity[hom])
 
-        for a in range(len(asm)):
-            features_for_row = np.append(features_for_row, asm[a])
+            features_for_row = features_for_row.reshape(-1, len(features_for_row))
 
-        features_for_row = features_for_row.reshape(-1, len(features_for_row))
+            for cor in range(len(correlation)):
+                features_for_row = np.append(features_for_row, correlation[cor])
 
-        # features_for_row = np.array([contrast, dissimilarity, homogeneity, correlation, asm])
-        # features_for_row = features_for_row.reshape(-1, len(features_for_row))
+            features_for_row = features_for_row.reshape(-1, len(features_for_row))
+
+            for a in range(len(asm)):
+                features_for_row = np.append(features_for_row, asm[a])
+
+            features_for_row = features_for_row.reshape(-1, len(features_for_row))
 
         if len(features) == 0:
             features = features_for_row
@@ -244,8 +262,10 @@ def extract_glcm_features_for_set(set):
 
 # data import and preparation phase
 
-x = 8
-y = 8
+ref_img = load_ref_image()
+
+x = 300
+y = 300
 honeycomb_resized, honeycomb_resized_gray = resize_images(create_image_array('honeycomb.txt'), x, y)
 birdnest_resized, birdnest_resized_gray = resize_images(create_image_array('birdnests.txt'), x, y)
 lighthouse_resized, lighthouse_resized_gray = resize_images(create_image_array('lighthouse.txt'), x, y)
@@ -263,13 +283,9 @@ l_df = make_X_and_y_df(light_X, 'light')
 data = pd.concat([h_df, b_df, l_df])
 data = data.reset_index(drop=True)
 
-# pca_knn_and_cv(data)
-
-# glcm
-# TODO: compare each picture to each other???
-honey_X_g = extract_glcm_features_for_set(honeycomb_resized_gray)
-bird_X_g = extract_glcm_features_for_set(birdnest_resized_gray)
-light_X_g = extract_glcm_features_for_set(lighthouse_resized_gray)
+honey_X_g = extract_glcm_features_for_set(honeycomb_resized_gray, True)
+bird_X_g = extract_glcm_features_for_set(birdnest_resized_gray, True)
+light_X_g = extract_glcm_features_for_set(lighthouse_resized_gray, True)
 
 h_df_g = pd.DataFrame(honey_X_g)
 b_df_g = pd.DataFrame(bird_X_g)

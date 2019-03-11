@@ -1,0 +1,11 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Duplicates" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <Python>
+        <minSize>146</minSize>
+        <isEnabled>true</isEnabled>
+      </Python>
+    </inspection_tool>
+  </profile>
+</component>
