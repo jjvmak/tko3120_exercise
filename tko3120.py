@@ -18,15 +18,17 @@ from skimage import img_as_ubyte as eight_bit
 from skimage.feature import greycomatrix, greycoprops
 import statistics
 
+
 def load_ref_image():
     try:
         image = io.imread(
-                'https://images.freeimages.com/images/large-previews/e71/frog-1371919.jpg')
+            'https://images.freeimages.com/images/large-previews/e71/frog-1371919.jpg')
         image_rez, gray_rez = resize_images([image], 300, 300)
 
     except:
         print("An exception occurred")
     return gray_rez[0]
+
 
 def create_image_array(location):
     """Returns array of images of given locations."""
@@ -137,7 +139,6 @@ def c_index(true_labels, predicted_labels):
 
 
 def pca_knn_and_cv(data):
-    # TODO: different k values
     data_x = data.loc[:, data.columns != 'label']
     data_x = data_x.reset_index(drop=True)
     data_x = stats.zscore(data_x, axis=1, ddof=0)
@@ -152,24 +153,27 @@ def pca_knn_and_cv(data):
     plt.scatter(pca_x[:, 0], pca_x[:, 1], c=group)
     plt.show
 
-    predictions = []
-    true_labels = []
-    for i in range(len(pca_x)):
-        train_x = np.delete(data_x, i, axis=0)
-        train_y = data_y.drop(data_y.index[i])
-        train_y = train_y.reset_index(drop=True)
-        neigh = KNeighborsClassifier(n_neighbors=3)
-        neigh.fit(train_x, train_y)
-        result = neigh.predict([data_x[i]])
-        predictions.append(result[0])
-        true_labels.append(data_y[i])
+    for k in range(2, 10):
+        predictions = []
+        true_labels = []
 
-    print('c_index: ' + repr(c_index(true_labels, predictions)))
-    n = 0
-    for j in range(len(predictions)):
-        if predictions[j] == true_labels[j]:
-            n = n + 1
-    print('prediction rate: ' + repr(n) + '/' + repr(len(predictions)))
+        for i in range(len(pca_x)):
+            train_x = np.delete(pca_x, i, axis=0)
+            train_y = data_y.drop(data_y.index[i])
+            train_y = train_y.reset_index(drop=True)
+            neigh = KNeighborsClassifier(n_neighbors=k)
+            neigh.fit(train_x, train_y)
+            result = neigh.predict([pca_x[i]])
+            predictions.append(result[0])
+            true_labels.append(data_y[i])
+
+        print('c_index: ' + repr(c_index(true_labels, predictions)) + ' k:' + repr(k))
+        n = 0
+        for j in range(len(predictions)):
+            if predictions[j] == true_labels[j]:
+                n = n + 1
+        print('prediction rate: ' + repr(n) + '/' + repr(len(predictions)))
+        print()
 
 
 def extract_glcm_features_for_image(image, other_image):
@@ -197,7 +201,7 @@ def extract_glcm_features_for_image(image, other_image):
     correlation = []
     asm = []
     for i, patch in enumerate(patches + other_patches):
-        glcm = greycomatrix(patch, [1], [90], 256, symmetric=True, normed=True)
+        glcm = greycomatrix(patch, [1], [0, np.pi / 2, np.pi], 256, symmetric=True, normed=True)
         contrast.append(greycoprops(glcm, 'contrast')[0, 0])
         dissimilarity.append(greycoprops(glcm, 'dissimilarity')[0, 0])
         homogeneity.append(greycoprops(glcm, 'homogeneity')[0, 0])
@@ -214,15 +218,13 @@ def extract_glcm_features_for_set(set, use_means):
             extract_glcm_features_for_image(set[i], ref_img)
         features_for_row = np.array([])
 
-        # TODO: must be better way to do this
-
         if use_means:
 
-            features_for_row = np.append(features_for_row ,statistics.mean(contrast))
-            features_for_row = np.append(features_for_row ,statistics.mean(dissimilarity))
-            features_for_row = np.append(features_for_row ,statistics.mean(homogeneity))
-            features_for_row = np.append(features_for_row ,statistics.mean(correlation))
-            features_for_row = np.append(features_for_row ,statistics.mean(asm))
+            features_for_row = np.append(features_for_row, statistics.mean(contrast))
+            features_for_row = np.append(features_for_row, statistics.mean(dissimilarity))
+            features_for_row = np.append(features_for_row, statistics.mean(homogeneity))
+            features_for_row = np.append(features_for_row, statistics.mean(correlation))
+            features_for_row = np.append(features_for_row, statistics.mean(asm))
 
             features_for_row = features_for_row.reshape(-1, len(features_for_row))
 
@@ -260,17 +262,18 @@ def extract_glcm_features_for_set(set, use_means):
     return features
 
 
-# data import and preparation phase
-
+# load reference image for glmc
 ref_img = load_ref_image()
 
+# data import and resizing pictures
+# use 300x300 picture size
 x = 300
 y = 300
 honeycomb_resized, honeycomb_resized_gray = resize_images(create_image_array('honeycomb.txt'), x, y)
 birdnest_resized, birdnest_resized_gray = resize_images(create_image_array('birdnests.txt'), x, y)
 lighthouse_resized, lighthouse_resized_gray = resize_images(create_image_array('lighthouse.txt'), x, y)
 
-# feature extraction
+# data preparing and feature extractions
 
 honey_X = extract_rgb_features(honeycomb_resized)
 bird_X = extract_rgb_features(birdnest_resized)
@@ -295,4 +298,5 @@ data_g = pd.concat([h_df_g, b_df_g, l_df_g])
 data_g = data_g.reset_index(drop=True)
 all_data = pd.concat([data_g, data], axis=1)
 
+# PCA, training KNN and evaluating the model
 pca_knn_and_cv(all_data)
