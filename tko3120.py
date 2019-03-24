@@ -39,7 +39,7 @@ def create_image_array(location):
     print(repr(len(urls)) + ' urls found')
     print()
     # for dev decrease the range! TODO: change back to len(array)
-    for i in range(2):
+    for i in range(len(urls)):
         print('reading image ' + repr(i) + ' from ' + urls[i])
         try:
             image = io.imread(urls[i])
