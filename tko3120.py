@@ -17,6 +17,7 @@ from skimage.color import rgb2gray
 from skimage import img_as_ubyte as eight_bit
 from skimage.feature import greycomatrix, greycoprops
 import statistics
+from sklearn.linear_model import RidgeClassifier
 
 
 def load_ref_image():
@@ -38,8 +39,8 @@ def create_image_array(location):
     print(repr(len(urls)) + ' urls found')
     print()
     # for dev decrease the range! TODO: change back to len(array)
-    for i in range(len(urls)):
-        # print('reading image ' + repr(i) + ' from ' + urls[i])
+    for i in range(2):
+        print('reading image ' + repr(i) + ' from ' + urls[i])
         try:
             image = io.imread(urls[i])
             images.append(image)
@@ -90,6 +91,7 @@ def first_order_texture_measures(img, show_plts):
         plt.show()
     fetures = np.concatenate(
         (r_mean, g_mean, b_mean, r_var, g_var, b_var), axis=0)
+
     return fetures.reshape(-1, len(fetures))
 
 
@@ -262,6 +264,43 @@ def extract_glcm_features_for_set(set, use_means):
     return features
 
 
+def ridge_regression_classification(data):
+    data_x = data.loc[:, data.columns != 'label']
+    data_x = data_x.reset_index(drop=True)
+    data_x = stats.zscore(data_x, axis=1, ddof=0)
+    data_y = data['label']
+    data_y = data_y.reset_index(drop=True)
+
+    pca = PCA(n_components=25)
+    pca.fit(data_x)
+    pca_x = pca.transform(data_x)
+
+    alpha_for = 0.0
+
+    for a in range(0, 15):
+        predictions = []
+        true_labels = []
+
+        for i in range(len(pca_x)):
+            train_x = np.delete(pca_x, i, axis=0)
+            train_y = data_y.drop(data_y.index[i])
+            train_y = train_y.reset_index(drop=True)
+            clf = RidgeClassifier(alpha=alpha_for, solver='sag', fit_intercept=True)
+            clf.fit(train_x, train_y)
+            result = clf.predict([pca_x[i]])
+            predictions.append(result[0])
+            true_labels.append(data_y[i])
+
+        print('c_index: ' + repr(c_index(true_labels, predictions)) + ' alpha:' + repr(alpha_for))
+        n = 0
+        for j in range(len(predictions)):
+            if predictions[j] == true_labels[j]:
+                n = n + 1
+        print('prediction rate: ' + repr(n) + '/' + repr(len(predictions)))
+        print()
+        alpha_for = alpha_for + 0.5
+
+
 # load reference image for glmc
 ref_img = load_ref_image()
 
@@ -300,3 +339,4 @@ all_data = pd.concat([data_g, data], axis=1)
 
 # PCA, training KNN and evaluating the model
 pca_knn_and_cv(all_data)
+#ridge_regression_classification(data)

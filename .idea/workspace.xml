@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="2b9bbc00-349e-47e9-acb2-40cfeb6276e5" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/tko3120.py" beforeDir="false" afterPath="$PROJECT_DIR$/tko3120.py" afterDir="false" />
-    </list>
+    <list default="true" id="2b9bbc00-349e-47e9-acb2-40cfeb6276e5" name="Default Changelist" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -168,16 +166,15 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1552288973188</updated>
-      <workItem from="1552288975404" duration="4929000" />
+      <workItem from="1552288975404" duration="5529000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="4929000" />
+    <option name="totallyTimeSpent" value="5529000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
-    <editor active="true" />
     <layout>
       <window_info id="Favorites" side_tool="true" />
       <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.15191898" />
