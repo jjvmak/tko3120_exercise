@@ -15,6 +15,16 @@ from skimage.color import rgb2gray
 sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 from sklearn.decomposition import PCA
 from scipy import stats
+import os
+import shutil
+
+from keras.utils import plot_model
+from keras.models import Model
+from keras.layers import Input
+from keras.layers import Dense
+from keras.layers.merge import concatenate
+from sklearn.model_selection import train_test_split
+
 
 
 from skimage import img_as_ubyte as eight_bit
@@ -30,7 +40,7 @@ def create_image_array(location):
     print(repr(len(urls)) + ' urls found')
     print()
     # for dev decrease the range! TODO: change back to len(array)
-    for i in range(4):
+    for i in range(len(urls)):
         print('reading image ' + repr(i) + ' from ' + urls[i])
         try:
             image = io.imread(urls[i])
@@ -63,7 +73,7 @@ def build_model(data_shape):
 
     model = tf.keras.models.Sequential()
     model.add(tf.keras.layers.Dense(128, activation=tf.nn.relu, input_dim=data_shape))
-    model.add(tf.keras.layers.Dense(128, activation=tf.nn.relu))
+    #model.add(tf.keras.layers.Dense(128, activation=tf.nn.relu))
     model.add(tf.keras.layers.Dense(3, activation=tf.nn.softmax))
     model.compile(optimizer='adam',
               loss='categorical_crossentropy',
@@ -206,8 +216,74 @@ def load_ref_image():
         print("An exception occurred")
     return gray_rez[0]
 
+def split_data(data):
+    splitted = np.array_split(data, 3)
+    return splitted[0], splitted[1], splitted[2]
+
+
+
+def build_and_save_sub_model(data, dim_for_subs):
+    # remove pre existing models
+    if os.path.exists('models'):
+        shutil.rmtree('models')
+    os.makedirs('models')
+
+    for i in range(len(data)):
+        data_set = data[i]
+        model = build_model(dim_for_subs)
+        model.fit(data_set[:,:col-3], data_set[:,[col-3, col-2, col-1]], epochs=500,
+          callbacks = [callback], validation_split=0.1, verbose=1)
+        filename = 'models/model_' + str(i + 1) + '.h5'
+        model.save(filename)
+        print('>Saved %s' % filename)
+        print()
+
+def load_all_models(n_models):
+    all_models = list()
+    for i in range(n_models):
+        # define filename for this ensemble
+        filename = 'models/model_' + str(i + 1) + '.h5'
+        # load model from file
+        model = tf.keras.models.load_model(filename)
+        # add to list of members
+        all_models.append(model)
+        print('>loaded %s' % filename)
+    return all_models
+
+
+def stack_models(members, test_data):
+    # how to do stacking???
+
+    subs = []
+    for i in range(len(members)):
+        sub = members[i]
+        for layer in sub.layers:
+            # make not trainable
+            layer.trainable = False
+        subs.append(sub)
+
+    sub_0 = subs[0]
+    sub_1 = subs[1]
+    sub_2 = subs[2]
+
+    pred_0 = sub_0.predict_classes(test[:,:col-3])
+    pred_1 = sub_1.predict_classes(test[:,:col-3])
+    pred_2 = sub_2.predict_classes(test[:,:col-3])
+    modes = []
+
+
+    for i in range(len(pred_0)):
+        mode = stats.mode([pred_0[i], pred_1[i], pred_2[i]], axis=None)
+        modes.append(mode[0][0])
+
+    return pred_0, pred_1, pred_2, modes
+
+
+
 print()
 
+
+# reference image for glcm patches
 ref_img = load_ref_image()
 
 x = 300
@@ -215,10 +291,6 @@ y = 300
 honeycomb_resized, honeycomb_resized_gray = resize_images(create_image_array('honeycomb.txt'), x, y)
 birdnest_resized, birdnest_resized_gray = resize_images(create_image_array('birdnests.txt'), x, y)
 lighthouse_resized, lighthouse_resized_gray = resize_images(create_image_array('lighthouse.txt'), x, y)
-
-#honeycomb_x = tf.keras.utils.normalize(honeycomb_resized, axis=1)
-#birdnest_x = tf.keras.utils.normalize(birdnest_resized, axis=1)
-#lighthouse_x = tf.keras.utils.normalize(lighthouse_resized, axis=1)
 
 honey_X = extract_rgb_features(honeycomb_resized)
 bird_X = extract_rgb_features(birdnest_resized)
@@ -244,13 +316,41 @@ data_y_enc = tf.keras.utils.to_categorical(data_y)
 data = np.concatenate((data_x, data_y_enc), axis=1)
 
 data = np.concatenate((data_x, data_y_enc), axis=1)
+
 np.random.shuffle(data)
+
+
+data, test = train_test_split(data, test_size=0.10, random_state=42)
 
 col = data.shape[1]
 
-callback = tf.keras.callbacks.EarlyStopping(monitor='acc', min_delta=0, patience=3, verbose=0, mode='auto')
+callback = tf.keras.callbacks.EarlyStopping(monitor='loss', min_delta=0.0001,
+                                            patience=2, verbose=1, mode='auto')
 
-model = build_model(data_x.shape[1])
-model.fit(data[:,:col-3], data[:,[col-3, col-2, col-1]], epochs=500, callbacks = [callback])
+dim_for_subs = data_x.shape[1]
+
+s1, s2, s3 = split_data(data)
+build_and_save_sub_model([s1, s2, s3], dim_for_subs)
+
+sub_models = load_all_models(3)
+
+pred_0, pred_1, pred_2, pred_3 = stack_models(sub_models, test)
+
+true_values = (np.argmax(test[:,[col-3, col-2, col-1]], axis=1))
+
+correct = 0
+for i in range(len(true_values)):
+    if true_values[i] == pred_3[i]:
+        correct += 1
+
+print(correct / len(true_values))
+
+
+#stacked.fit(data[:,:col-3], data[:,[col-3, col-2, col-1]], epochs=500,
+#          callbacks = [callback], validation_split=0.1, verbose=1)
+
+
+
+
 
 
