@@ -21,6 +21,7 @@ from sklearn.linear_model import RidgeClassifier
 
 
 def load_ref_image():
+    # Loads the reference image for glcm calculations.
     try:
         image = io.imread(
             'https://images.freeimages.com/images/large-previews/e71/frog-1371919.jpg')
@@ -32,30 +33,33 @@ def load_ref_image():
 
 
 def create_image_array(location):
-    """Returns array of images of given locations."""
+    # Loads images of given locations.
+    # Stores images in arrays.
     images = []
     urls = np.loadtxt(location, dtype='U100')
-    print('reading urls from ' + location)
-    print(repr(len(urls)) + ' urls found')
-    print()
-    # for dev decrease the range! TODO: change back to len(array)
+    # print('reading urls from ' + location)
+    # print(repr(len(urls)) + ' urls found')
+    # print()
+
     for i in range(len(urls)):
-        print('reading image ' + repr(i) + ' from ' + urls[i])
+        # print('reading image ' + repr(i) + ' from ' + urls[i])
         try:
             image = io.imread(urls[i])
             images.append(image)
         except:
+            # Some of the urls will not response at every query.
             print("An exception occurred")
     return images
 
 
 def resize_images(image_array, x, y):
-    """Returns array of resized images."""
+    # Resizes the images to x and y values.
+    # Creates grayscale copies of given images.
     resized_images = []
     resized_gray_images = []
     for i in range(len(image_array)):
         img = image_array[i]
-        # TODO: what are right configs?
+        # Anti_aliasing = reflect seemed to give best results.
         resized = resize(img, (x, y), anti_aliasing='reflect', mode='reflect')
         resized_images.append(resized)
         resized_gray_images.append(rgb2gray(resized))
@@ -63,6 +67,11 @@ def resize_images(image_array, x, y):
 
 
 def first_order_texture_measures(img, show_plts):
+    # Extracts the RGB values of image.
+    # Calculates mean and variance of RGB values.
+    # Returns array of calculated mean and variance of each R,G and B channels.
+    # These calculated values will be used as features to represent image.
+    # Show_plts = True will show plots of the calculated values.
     r = img[:, :, 0]
     g = img[:, :, 1]
     b = img[:, :, 2]
@@ -96,6 +105,9 @@ def first_order_texture_measures(img, show_plts):
 
 
 def extract_rgb_features(image_array):
+    # Utility function to help data handling.
+    # This function calls first_order_texture_measures() for each individual
+    # image and will store features for each image array.
     features = first_order_texture_measures(image_array[0], False)
     for i in range(len(image_array)):
         if (i != 0):
@@ -104,12 +116,15 @@ def extract_rgb_features(image_array):
 
 
 def make_X_and_y_df(data, label):
+    # Utility function to label data
     df = pd.DataFrame(data)
     df['label'] = label
     return df
 
 
 def make_color_group(data):
+    # Utility function to make color groups for plots
+    # Values are hard coded for this exercise to: honey, light and bird.
     group = []
     for i in range(len(data)):
         if data[i] == 'honey':
@@ -122,6 +137,7 @@ def make_color_group(data):
 
 
 def c_index(true_labels, predicted_labels):
+    # Calculates c-index for model performance
     n = 0
     h_sum = 0
     for i in range(len(true_labels)):
@@ -141,49 +157,76 @@ def c_index(true_labels, predicted_labels):
 
 
 def pca_knn_and_cv(data):
+    # Performs PCA (2 components) for data and plots the result in scatter plot
+    # Performs KNN and evaluates the model.
+    # Performs zscore standardization for data.
+    # Evaluation metrics: c-index and (correct predictions / true values)
+
+    # Data handling
+    # Divide dataset to x and y
     data_x = data.loc[:, data.columns != 'label']
     data_x = data_x.reset_index(drop=True)
     data_x = stats.zscore(data_x, axis=1, ddof=0)
     data_y = data['label']
     data_y = data_y.reset_index(drop=True)
 
+    # Perform PCA
     pca = PCA(n_components=2)
     pca.fit(data_x)
     pca_x = pca.transform(data_x)
     group = make_color_group(data_y)
 
     plt.scatter(pca_x[:, 0], pca_x[:, 1], c=group)
+    plt.legend(loc=4)
     plt.show
 
+    # Outer loop iterates values for k, which will be used as k parameter
+    # for KNN.
     for k in range(2, 10):
         predictions = []
         true_labels = []
 
+        # Inner loop performs KNN training with CV.
+        # Predictions for each iteration are stored in array.
         for i in range(len(pca_x)):
             train_x = np.delete(pca_x, i, axis=0)
             train_y = data_y.drop(data_y.index[i])
             train_y = train_y.reset_index(drop=True)
+            # Here the k is used as parameter for KNN
             neigh = KNeighborsClassifier(n_neighbors=k)
             neigh.fit(train_x, train_y)
             result = neigh.predict([pca_x[i]])
             predictions.append(result[0])
             true_labels.append(data_y[i])
 
+        # Peforms c-index value calculation for each k.
         print('c_index: ' + repr(c_index(true_labels, predictions)) + ' k:' + repr(k))
         n = 0
+
+        # Performs the (correct predictions / true values) calculations for each k
         for j in range(len(predictions)):
             if predictions[j] == true_labels[j]:
                 n = n + 1
-        print('prediction rate: ' + repr(n) + '/' + repr(len(predictions)))
+        print('prediction rate: ' + repr( n / len(predictions)))
         print()
 
 
 def extract_glcm_features_for_image(image, other_image):
+    # Calculates Gray-level co-occurrence matrix for feature extraction.
+    # Extracted features are contrast, dissimilarity, homogeneity, correlation
+    # and angular second moment.
+
     # http://scikit-image.org/docs/0.9.x/auto_examples/plot_glcm.html
-    # I used that tutorial with few modifications
+    # I used that tutorial with few modifications.
+    # The other image here is the ref_image.
+    # Using the image from outside the training set as reference for
+    # calculations seemed to give best results.
+
     image = eight_bit(image)
     other_image = eight_bit(other_image)
 
+    # Image size is 300x300.
+    # Here the image will be divided into 4 patches.
     PATCH_SIZE = 150
 
     locations = [(0, 0), (0, 150), (150, 0), (150, 150)]
@@ -202,6 +245,7 @@ def extract_glcm_features_for_image(image, other_image):
     homogeneity = []
     correlation = []
     asm = []
+    # Calculating matrix from patches.
     for i, patch in enumerate(patches + other_patches):
         glcm = greycomatrix(patch, [1], [0, np.pi / 2, np.pi], 256, symmetric=True, normed=True)
         contrast.append(greycoprops(glcm, 'contrast')[0, 0])
@@ -214,6 +258,11 @@ def extract_glcm_features_for_image(image, other_image):
 
 
 def extract_glcm_features_for_set(set, use_means):
+    # Utility method for extracting glcm features for image arrays.
+    # use_means = True will calculate mean values of each individual feature
+    # array. Using means seemed to give best result.
+    # use_means = False will return every feature array with no data processing
+
     features = []
     for i in range(len(set)):
         contrast, dissimilarity, homogeneity, correlation, asm = \
@@ -265,6 +314,10 @@ def extract_glcm_features_for_set(set, use_means):
 
 
 def ridge_regression_classification(data):
+    # Performs PCA (25 components) for data.
+    # Performs ridge regressiong classification.
+    # Performs zscore standardization for data.
+    # Evaluation metrics: c-index and (correct predictions / true values)
     data_x = data.loc[:, data.columns != 'label']
     data_x = data_x.reset_index(drop=True)
     data_x = stats.zscore(data_x, axis=1, ddof=0)
@@ -277,10 +330,16 @@ def ridge_regression_classification(data):
 
     alpha_for = 0.0
 
+    # Each iteration will increase the alpha parameter by 0.5.
+    # Alpha parameter is used for regression regulation parameter.
+    # alpha_for = 0.0 will perform Ordinary Least Squares Regression model, but
+    # as the alpha_for value increases, the model complexity will increase.
     for a in range(0, 15):
         predictions = []
         true_labels = []
 
+        # Inner loop will train RidgeClassifier and perform CV.
+        # Predictions for each iteration are stored in array.
         for i in range(len(pca_x)):
             train_x = np.delete(pca_x, i, axis=0)
             train_y = data_y.drop(data_y.index[i])
@@ -291,12 +350,15 @@ def ridge_regression_classification(data):
             predictions.append(result[0])
             true_labels.append(data_y[i])
 
+        # Performs c-index calculations for each alpha values.
         print('c_index: ' + repr(c_index(true_labels, predictions)) + ' alpha:' + repr(alpha_for))
         n = 0
+
+         # Performs the (correct predicions / true values) calculations for each alpha
         for j in range(len(predictions)):
             if predictions[j] == true_labels[j]:
                 n = n + 1
-        print('prediction rate: ' + repr(n) + '/' + repr(len(predictions)))
+        print('prediction rate: ' + repr( n / len(predictions)))
         print()
         alpha_for = alpha_for + 0.5
 
@@ -339,4 +401,6 @@ all_data = pd.concat([data_g, data], axis=1)
 
 # PCA, training KNN and evaluating the model
 pca_knn_and_cv(all_data)
-#ridge_regression_classification(data)
+
+# PCA, ridge regression classification and evaluating the model
+ridge_regression_classification(all_data)

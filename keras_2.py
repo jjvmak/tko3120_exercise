@@ -17,31 +17,20 @@ from sklearn.decomposition import PCA
 from scipy import stats
 import os
 import shutil
-
-from keras.utils import plot_model
-from keras.models import Model
-from keras.layers import Input
-from keras.layers import Dense
-from keras.layers.merge import concatenate
 from sklearn.model_selection import train_test_split
-
-
-
 from skimage import img_as_ubyte as eight_bit
 from skimage.feature import greycomatrix, greycoprops
 import statistics
 
 
 def create_image_array(location):
-    """Returns array of images of given locations."""
     images = []
     urls = np.loadtxt(location, dtype='U100')
-    print('reading urls from ' + location)
-    print(repr(len(urls)) + ' urls found')
-    print()
-    # for dev decrease the range! TODO: change back to len(array)
-    for i in range(len(urls)):
-        print('reading image ' + repr(i) + ' from ' + urls[i])
+    #print('reading urls from ' + location)
+    #print(repr(len(urls)) + ' urls found')
+    #print()
+    for i in range(3):
+        #print('reading image ' + repr(i) + ' from ' + urls[i])
         try:
             image = io.imread(urls[i])
             images.append(image)
@@ -51,16 +40,15 @@ def create_image_array(location):
 
 
 def resize_images(image_array, x, y):
-    """Returns array of resized images."""
     resized_images = []
     resized_gray_images = []
     for i in range(len(image_array)):
         img = image_array[i]
-        # TODO: what are right configs?
         resized = resize(img, (x, y), anti_aliasing='reflect', mode='reflect')
         resized_images.append(resized)
         resized_gray_images.append(rgb2gray(resized))
     return resized_images, resized_gray_images
+
 
 def make_y_for_x(data, label):
     y = []
@@ -70,15 +58,20 @@ def make_y_for_x(data, label):
 
 
 def build_model(data_shape):
+    # Builds single sequential models with one hidden layer
+    # Activation function in hidden layr is relu.
+    # Output layers activation is softmax
+    # Models is compiled with adam optimizer and categorical crossentropy loss
+    # function.
 
     model = tf.keras.models.Sequential()
     model.add(tf.keras.layers.Dense(128, activation=tf.nn.relu, input_dim=data_shape))
-    #model.add(tf.keras.layers.Dense(128, activation=tf.nn.relu))
     model.add(tf.keras.layers.Dense(3, activation=tf.nn.softmax))
     model.compile(optimizer='adam',
               loss='categorical_crossentropy',
               metrics=['accuracy'])
     return model
+
 
 def first_order_texture_measures(img, show_plts):
     r = img[:, :, 0]
@@ -206,6 +199,7 @@ def extract_glcm_features_for_set(set, use_means):
 
     return features
 
+
 def load_ref_image():
     try:
         image = io.imread(
@@ -216,14 +210,19 @@ def load_ref_image():
         print("An exception occurred")
     return gray_rez[0]
 
+
 def split_data(data):
+    # Splits data to 3 arrays for models
     splitted = np.array_split(data, 3)
     return splitted[0], splitted[1], splitted[2]
 
 
-
 def build_and_save_sub_model(data, dim_for_subs):
-    # remove pre existing models
+    # FOR SOME REASON THIS IS DOES NOT WORK IN JUPYTER NOTEBOOK (no surprises
+    # there...)
+    # Builds sequential models and saves them.
+    # See build_model() for detailed information.
+    # Removes pre existing models
     if os.path.exists('models'):
         shutil.rmtree('models')
     os.makedirs('models')
@@ -238,22 +237,48 @@ def build_and_save_sub_model(data, dim_for_subs):
         print('>Saved %s' % filename)
         print()
 
+
+def build_and_save_sub_model_cached_version(data, dim_for_subs):
+    models = []
+    for i in range(len(data)):
+        data_set = data[i]
+        model = build_model(dim_for_subs)
+        model.fit(data_set[:,:col-3], data_set[:,[col-3, col-2, col-1]], epochs=500,
+          callbacks = [callback], validation_split=0.1, verbose=1)
+        models.append(model)
+        print('added model')
+        print()
+    return models
+
+
 def load_all_models(n_models):
+    # THIS DOES NOT WORK IN JUPYTER NOTEBOOK
+
     all_models = list()
     for i in range(n_models):
-        # define filename for this ensemble
+        # Defines filename for this ensemble.
         filename = 'models/model_' + str(i + 1) + '.h5'
-        # load model from file
+        # Load model from file.
         model = tf.keras.models.load_model(filename)
-        # add to list of members
+        # Add to list of members.
         all_models.append(model)
         print('>loaded %s' % filename)
     return all_models
 
 
 def stack_models(members, test_data):
-    # how to do stacking???
+    # how to do the stacking???
+    # There where few tutorials about how to combine models, but none of those
+    # did not seem to work with the version of tf.keras which was installed
+    # by the course instructions.
 
+    # This functions DOES NOT actually stack models but instead of that, just
+    # will get predictions of each model, store the in the arrays and get the
+    # mode value of the predictions. This value will be the final prediction
+    # of the ensemble.
+
+    # This is kinda redundant now because the stacking did not work.
+    # This would prevent changing the weight and bias values of the models.
     subs = []
     for i in range(len(members)):
         sub = members[i]
@@ -271,7 +296,8 @@ def stack_models(members, test_data):
     pred_2 = sub_2.predict_classes(test[:,:col-3])
     modes = []
 
-
+    # Getting the predictions.
+    # modes is the final predictions of the ensemble.
     for i in range(len(pred_0)):
         mode = stats.mode([pred_0[i], pred_1[i], pred_2[i]], axis=None)
         modes.append(mode[0][0])
@@ -279,9 +305,7 @@ def stack_models(members, test_data):
     return pred_0, pred_1, pred_2, modes
 
 
-
 print()
-
 
 # reference image for glcm patches
 ref_img = load_ref_image()
@@ -309,45 +333,58 @@ birdnest_y = make_y_for_x(bird, 1)
 lighthouse_y = make_y_for_x(light, 2)
 
 data_x = np.concatenate((honey, bird, light), axis=0)
+# Standardize the data
 data_x = stats.zscore(data_x, axis=0, ddof=0)
+
 data_y = np.concatenate((honeycomb_y, birdnest_y, lighthouse_y), axis=0)
+# Enconding the labels for keras
 data_y_enc = tf.keras.utils.to_categorical(data_y)
-
+# Combine and shuffle data. Shuffling will improve weight calculations.
 data = np.concatenate((data_x, data_y_enc), axis=1)
-
-data = np.concatenate((data_x, data_y_enc), axis=1)
-
 np.random.shuffle(data)
 
-
+# Splitting data to training and testing sets
 data, test = train_test_split(data, test_size=0.10, random_state=42)
 
 col = data.shape[1]
 
+# This is the callback function used to early stopping. It will monitor the
+# loss metric and stop once it will not improve more than min_delta.
+# Patience is set to 2, so it will not stop at the first time we reach
+# min_delta but will keep going till it will reach min_delta second time.
 callback = tf.keras.callbacks.EarlyStopping(monitor='loss', min_delta=0.0001,
                                             patience=2, verbose=1, mode='auto')
 
 dim_for_subs = data_x.shape[1]
 
+# Splitting data for three different models
 s1, s2, s3 = split_data(data)
-build_and_save_sub_model([s1, s2, s3], dim_for_subs)
 
-sub_models = load_all_models(3)
+# Build and save three models
+#build_and_save_sub_model([s1, s2, s3], dim_for_subs)
 
+# Load models
+#sub_models = load_all_models(3)
+
+# USE CACHED VERSION IN JUPYTER NOTEBOOK
+sub_models = build_and_save_sub_model_cached_version([s1, s2, s3], dim_for_subs)
+
+# Get the predictions of the models with the testing data.
 pred_0, pred_1, pred_2, pred_3 = stack_models(sub_models, test)
 
+# 'decode' back the encoded labels
 true_values = (np.argmax(test[:,[col-3, col-2, col-1]], axis=1))
 
+# Calculate simple performance metrics
+# (correct predictions / true values)
 correct = 0
 for i in range(len(true_values)):
     if true_values[i] == pred_3[i]:
         correct += 1
 
-print(correct / len(true_values))
+print()
+print('prediction rate: ' + repr(correct / len(true_values)))
 
-
-#stacked.fit(data[:,:col-3], data[:,[col-3, col-2, col-1]], epochs=500,
-#          callbacks = [callback], validation_split=0.1, verbose=1)
 
 
 
